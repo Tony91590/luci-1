@@ -1,0 +1,10 @@
+
+config xunlei 'config'
+	option up '0'
+	option xware 'Xware_mipseb_32_uclibc.tar.gz'
+	option vod '0'
+	option url 'http://dl.lazyzhu.com/file/Thunder/Xware'
+	option enable '0'
+	option device '/tmp/mnt/sda1'
+	option file '/tmp/mnt/sda1'
+

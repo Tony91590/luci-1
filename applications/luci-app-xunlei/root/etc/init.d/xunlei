@@ -1,0 +1,116 @@
+#!/bin/sh /etc/rc.common
+START=99
+
+TCPPORTS='1080 4662 2080 2062'
+UDPPORTS='4661 3027 888 666 2037 2061 2048 2066'
+
+set_xunlei_firewall(){
+	local ctlop="$1"
+	if [ -z "$ctlop" ]
+		then
+		ctlop='stop'
+	fi
+	if [ "$ctlop" != 'stop' -a "$ctlop" != 'start' ]
+		then
+		echo "WARNING: unknow operation: $ctlop, set to stop."
+		ctlop='stop'
+	fi
+	if [ "$ctlop" = 'stop' ]
+		then
+			uci delete firewall.xunleiwantcpports 2>/dev/null
+			uci delete firewall.xunleiwanudpports 2>/dev/null
+			uci commit
+			if [ $? -ne 0 ]
+				then
+				echo "ERROR: remove xunleiwan rules config/firewall failed."
+				return 1
+			else
+				fw3 reload >/dev/null 2>&1
+				return $?
+			fi
+		return 0
+	fi
+	#start here
+	uci set firewall.xunleiwantcpports=rule 2>/dev/null
+	uci set firewall.xunleiwantcpports.name="'xunlei wan accept tcp port $TCPPORTS'" 2>/dev/null
+	uci set firewall.xunleiwantcpports.src=wan 2>/dev/null
+	uci set firewall.xunleiwantcpports.dest_port="${TCPPORTS}" 2>/dev/null
+	uci set firewall.xunleiwantcpports.proto=tcp 2>/dev/null
+	uci set firewall.xunleiwantcpports.target=ACCEPT 2>/dev/null
+
+	uci set firewall.xunleiwanudpports=rule 2>/dev/null
+	uci set firewall.xunleiwanudpports.name="xunlei wan accept udp port $UDPPORTS" 2>/dev/null
+	uci set firewall.xunleiwanudpports.src=wan 2>/dev/null
+	uci set firewall.xunleiwanudpports.dest_port="${UDPPORTS}" 2>/dev/null
+	uci set firewall.xunleiwanudpports.proto=udp 2>/dev/null
+	uci set firewall.xunleiwanudpports.target=ACCEPT 2>/dev/null
+
+	uci commit firewall
+	if [ $? -ne 0 ]
+		then
+		echo "ERROR: setup xunleiwan rules config/firewall failed."
+		return 1
+	else
+		fw3 reload >/dev/null 2>&1
+		return $?
+	fi
+}
+
+
+start() {
+	config_load "xunlei"
+	set_xunlei_firewall start
+	config_get enable config enable 0
+	config_get device config device
+	config_get up config up 0
+	config_get file config file
+
+	device=$(uci get xunlei.config.device)
+	file=$(uci get xunlei.config.file)
+	vod=$(uci get xunlei.config.vod)
+	mountpoint="`mount | grep "$device" | awk '{print $3;exit}'`"
+
+	rm -f /tmp/etc/thunder_mounts.cfg
+	rm -f /tmp/etc/etm.cfg
+	rm -f /tmp/etc/download.cfg
+
+	path1="$file/xunlei/cfg/thunder_mounts.cfg"
+	path2="$file/xunlei/cfg/etm.cfg"
+	path3="$file/xunlei/cfg/download.cfg"
+	
+	[ "$up" -eq 1 ] && /etc/xware/xlup && /etc/xware/cfg
+	[ "$vod" -eq 1 ] && rm -f $file/xunlei/lib/vod_httpserver
+	[ "$vod" -eq 1 ] && rm -f $file/xunlei/vod_httpserver
+
+	[ "$enable" -eq 0 ] &&	exit 0
+
+	ln -s "$path1" /tmp/etc/thunder_mounts.cfg
+	ln -s "$path2" /tmp/etc/etm.cfg
+	ln -s "$path3" /tmp/etc/download.cfg
+        rm -rf /tmp/etc/xlver
+        touch /tmp/etc/xlver create file
+        mkdir /tmp/thunder
+        cp /etc/config/thunder_mounts.cfg /tmp/thunder/
+        chmod -R 755 /tmp/thunder/*
+       
+        ##$file/xunlei/./portal -l 1507063001000004p0007754ljrbwkmi1m2e8qywun
+	$file/xunlei/./portal
+    sleep 3
+    renice -n 19 $(pidof EmbedThunderManager)
+}
+
+stop() {
+        kill -1 $(ps |grep "EmbedThunderManager" |grep -v "grep"| cut -c 0-6)
+        set_xunlei_firewall stop
+	file=$(uci get xunlei.config.file)
+	$file/xunlei/./portal -s
+        
+}
+
+restart() {
+	stop
+	sleep 1
+	start
+}
+
+
